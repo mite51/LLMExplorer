@@ -1,41 +1,25 @@
 import sys
+import llama_cpp
+import llm_generator
+
 from typing import List, Tuple
 from PyQt6.QtWidgets import (QApplication, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout, 
                              QTextEdit, QLineEdit, QPushButton, QFileDialog, QGraphicsView, 
                              QGraphicsScene, QLabel, QSplitter)
-from PyQt6.QtGui import QColor, QPen, QBrush
-from PyQt6.QtCore import Qt, QRectF
-import llama_cpp
+from PyQt6.QtGui import QColor, QPen, QBrush, QTextCursor
+from PyQt6.QtCore import QCoreApplication, Qt, QRectF, pyqtSlot
 
-
-def top_x_values_with_indices(values, top_X) -> List[Tuple[str, float]]:
-    indexed_values = list(enumerate(values))
-    indexed_values.sort(key=lambda x: x[1], reverse=True)
-    top_x = indexed_values[:top_X]
-    top_x_sorted = sorted(top_x, key=lambda x: x[1], reverse=True)
-    return [(token, attention_score) for token, attention_score in top_x_sorted]
-
-class TokenNode:
-    def __init__(self, token_index: int, top_n_results:List[Tuple[str, float]]  ):
-        self.token_index:int = token_index
-        self.top_n: List[Tuple[str, float]] = top_n_results
-        self.next:TokenNode = None
-        self.alt:TokenNode = None
-
-    def get_token(self)->float:
-        return self.top_n[self.token_index][0]
-
-    def get_attention_score(self)->float:
-        return self.top_n[self.token_index][1]
 
 class LLMExplorer(QMainWindow):
     def __init__(self):
         super().__init__()
+
+        self.response_generator = llm_generator.ResponseGeneratorThread()
+        self.response_generator.new_data_signal.connect(self.update_data)
+        self.response_graph = None
+
         self.setWindowTitle("LLM Explorer")
         self.setGeometry(100, 100, 1200, 800)
-
-        self.llm = None
-        self.response_graph = None
 
         main_widget = QWidget()
         main_layout = QHBoxLayout()
@@ -105,21 +89,34 @@ class LLMExplorer(QMainWindow):
         main_widget.setLayout(main_layout)
         self.setCentralWidget(main_widget)
 
+    @pyqtSlot()
+    def start_generating(self):
+       self.response_generator.start()
+        #self.start_button.setEnabled(False)
+        #self.stop_button.setEnabled(True)
+
+    @pyqtSlot()
+    def stop_generating(self):
+        self.response_generator.stop()
+        self.response_generator.wait()
+        #self.start_button.setEnabled(True)
+        #self.stop_button.setEnabled(False)
+
+    @pyqtSlot(llm_generator.TokenNode, str)
+    def update_data(self, new_node:llm_generator.TokenNode, decoded_token:str):
+        self.chat_history.insertPlainText(decoded_token)
+        #force an update
+        QCoreApplication.processEvents()
+
     def select_model(self):
         file_name, _ = QFileDialog.getOpenFileName(self, "Select LLM Model")
         if file_name:
             self.model_path_input.setText(file_name)
-            self.load_model(file_name)
-
-    def load_model(self, model_path):
-        try:
-            self.llm = llama_cpp.Llama(model_path=model_path, n_gpu_layers=-1)
-            self.chat_history.append("Model loaded successfully.")
-        except Exception as e:
-            self.chat_history.append(f"Error loading model: {str(e)}")
+            result = self.response_generator.load_model(file_name)
+            self.chat_history.append(f"{result}\n")
 
     def on_prompt_entered(self):
-        if not self.llm:
+        if not self.response_generator.llm:
             self.chat_history.append("Please load a model first.")
             return
 
@@ -128,69 +125,7 @@ class LLMExplorer(QMainWindow):
         self.prompt_input.clear()
 
         # Generate response
-        response = self.generate_response(prompt)
-        self.chat_history.append(f"<font color='red'>LLM:</font> {response}")
-
-        # Update graph
-        self.update_response_graph(response)
-
-    def generate_response(self, prompt):
-        # This is a simplified version. You'll need to implement the token-by-token
-        # generation and probability calculation as described in your example.
-        prompt_tokens = self.llm.tokenize(prompt.encode())
-        sample_idx = self.llm.n_tokens + len(prompt_tokens) - 1
-        #self.llm.eval(prompt_tokens)
-
-        # start with a dummy node
-        self.response_graph = TokenNode(0,[])
-        response_text = ""
-
-        # Eval and sample
-        loop = True
-        while loop:
-            self.llm.eval(prompt_tokens)
-            while sample_idx < self.llm.n_tokens:
-                token = self.llm.sample(idx=sample_idx) #todo add temp, top_k, top_p
-
-                loop = not llama_cpp.llama_token_is_eog(self.llm._model.model, token)
-
-                #tokens_or_none = yield token
-                tokens_or_none = token
-                prompt_tokens.clear()
-                prompt_tokens.append(token)
-
-                #
-                detokenized = self.llm.detokenize([tokens_or_none])
-                response_text += detokenized.decode("utf-8")
-
-                attention_scores = self.llm.scores[sample_idx]
-                top_n_scores = top_x_values_with_indices(attention_scores, 10)
-                
-                token_node = TokenNode(0, top_n_scores)
-                self.response_graph.next = token_node                    
-
-                #
-                sample_idx += 1
-
-                if sample_idx < self.llm.n_tokens and token != self.llm._input_ids[sample_idx]:
-                    self.llm.n_tokens = sample_idx
-                    self._ctx.kv_cache_seq_rm(-1, self.llm.n_tokens, -1)
-                    break
-
-                
-
-        # remove dummy node
-        self.response_graph = self.response_graph.next 
- 
-        return response_text
-    
-        """
-        attention_score = result[0]
-        response_token = result[1]
-        response = self.llm.detokenize([response_token])
-        return response.decode("utf-8"), attention_score         
-        """    
-
+        self.response_generator.start(prompt)
 
     def update_response_graph(self, response):
         # Clear previous graph

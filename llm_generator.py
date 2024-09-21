@@ -1,6 +1,6 @@
-from typing import List, Tuple
 import llama_cpp
 
+from typing import List, Tuple
 from PyQt6.QtCore import QThread, pyqtSignal, QMutex, QMutexLocker
 
 def top_x_values_with_indices(values, top_X) -> List[Tuple[str, float]]:
@@ -25,7 +25,7 @@ class TokenNode:
         return self.top_n[self.token_index][1]
 
 class ResponseGeneratorThread(QThread):
-    new_node_signal = pyqtSignal(TokenNode, str)
+    new_data_signal = pyqtSignal(TokenNode, str)
 
     llm = None
     response_graph = None
@@ -50,7 +50,7 @@ class ResponseGeneratorThread(QThread):
             result = "load aborted, model in use"                
         return result        
 
-    def generate_response(self, prompt):
+    def start(self, prompt):
         if self.llm:
             self._is_running = True
             self.response_text = ""
@@ -81,7 +81,7 @@ class ResponseGeneratorThread(QThread):
                         token_node = TokenNode(0, top_n_scores)
                         self.response_graph.next = token_node
                         
-                        self.new_node_signal.emit(token_node, response_token_decoded)
+                        self.new_data_signal.emit(token_node, response_token_decoded)
 
                     #
                     sample_idx += 1
