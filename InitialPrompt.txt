@@ -1,0 +1,61 @@
+I would like you to write an app in pyqt. The app is called LLM Explorer and its meant as a tool to play around with the response token probabilities from an LLM. It should use the python module llama_cpp to run inference on a selected llm model. There are 3 main panels:
+1)The chat session, showing the history of replies from the LLM and prompts from the user. This should just be simple text but with a prefix of either "User:" or "LLM:" and should the prefix should be colored green and red respectively.
+2)The current response graph, this panel should be a node graph similar to a source control revision graph. Each node is a token, with space for 2 numbers.. its probability from the response and the probability difference from the next highest token probability. Theres also a space for a down arrow. Clicking the down arrow will show the top ten tokens that could have been used for the response. selecting one of the possible tokens, that will create a new branch to form an alternative response. The first token is the alternative response will have an up arrow that will swap vertical position with the token is branched from. The tokens on the top most branch will be the final response moved up to the chat session when the user enters a new prompt.
+To build this graph the LLM response will have to be sampled for each next token, store 10 tokens with the highest probability. Each token will need to be stored in a response graph with the probability data and connections to the next token and any children (alternative tokens selected by the users). 
+3)The prompt panel. When the user enters text and presses enter:
+	-the current top response will get moved to the chat session-
+	-the current prompt text gets moved to the char session
+	-the current response graph gets cleared
+	-a new context is built using the chat session plus the new user prompt
+	-a new response starts getting sampled asynchronously using the generated prompt
+	-each response creates a new token in the current response graph
+
+
+There probably needs to be a field at the bottom to provide a path for the model used by llama_cpp
+
+example of how to sample an llm response and get token values and probabilities.
+
+
+import llama_cpp
+llama = llama_cpp.Llama(
+      model_path=model_path,
+      n_gpu_layers=-1, # Uncomment to use GPU acceleration
+      # seed=1337, # Uncomment to set a specific seed
+      # n_ctx=2048, # Uncomment to increase the context window
+)
+
+prompt_tokens = llama.tokenize(b"write a generic response")
+
+sample_idx = llama.n_tokens + len(prompt_tokens) - 1
+llama.eval(prompt_tokens)
+
+token = llama.sample( idx=sample_idx )
+
+def top_x_values_with_indices(values, top_X):
+    # Combine each value with its index
+    indexed_values = list(enumerate(values))
+    
+    # Sort the list of tuples by value in descending order
+    indexed_values.sort(key=lambda x: x[1], reverse=True)
+    
+    # Slice to get the top X values
+    top_x = indexed_values[:top_X]
+    
+    # Sort the top X elements by value in descending order before returning
+    top_x_sorted = sorted(top_x, key=lambda x: x[1], reverse=True)
+    
+    # Extract the values and indices
+    result = [(value, index) for index, value in top_x_sorted]
+    
+    return result
+                 
+            
+print(f"===== top 3 next tokens")
+score_entry = llama.scores[sample_idx]
+top_3 = top_x_values_with_indices(score_entry, 3)
+for result in top_3:
+      value = result[0]
+      token = result[1]
+      detokenized_string = llama.detokenize([token])
+      print(f"xxx index={value} token={detokenized_string}")
+#print(dir(llama))
