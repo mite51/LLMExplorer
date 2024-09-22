@@ -384,6 +384,71 @@ class NodeLineEdit(NodeBaseWidget):
             self.get_custom_widget().setText(text)
             self.on_value_changed()
 
+class NodeLabel(NodeBaseWidget):
+    """
+    Displays as a ``QLabel`` in a node.
+
+    .. inheritance-diagram:: NodeGraphQt.widgets.node_widgets.NodeLabel
+        :parts: 1
+
+    .. note::
+        `To embed a` ``QLabel`` `in a node see func:`
+        :meth:`NodeGraphQt.BaseNode.add_text_input`
+    """
+
+    def __init__(self, parent=None, name='', text=''):
+        super(NodeLabel, self).__init__(parent, name)
+        bg_color = ViewerEnum.BACKGROUND_COLOR.value
+        text_color = tuple(map(lambda i, j: i - j, (255, 255, 255),
+                               bg_color))
+        style_dict = {
+            'QLabel': {
+                'background': 'rgba({0},{1},{2},20)'.format(*bg_color),
+                'border': '1px solid rgb({0},{1},{2})'
+                          .format(*ViewerEnum.GRID_COLOR.value),
+                'border-radius': '3px',
+                'color': 'rgba({0},{1},{2},150)'.format(*text_color),
+            }
+        }
+        stylesheet = ''
+        for css_class, css in style_dict.items():
+            style = '{} {{\n'.format(css_class)
+            for elm_name, elm_val in css.items():
+                style += '  {}:{};\n'.format(elm_name, elm_val)
+            style += '}\n'
+            stylesheet += style
+        ledit = QtWidgets.QLabel()
+        ledit.setText(text)
+        ledit.setStyleSheet(stylesheet)
+        ledit.setAlignment(QtCore.Qt.AlignCenter)
+        ledit.clearFocus()
+        self.set_custom_widget(ledit)
+        self.widget().setMaximumWidth(140)
+
+    @property
+    def type_(self):
+        return 'LineLabelWidget'
+
+    def get_value(self):
+        """
+        Returns the widgets current text.
+
+        Returns:
+            str: current text.
+        """
+        return str(self.get_custom_widget().text())
+
+    def set_value(self, text=''):
+        """
+        Sets the widgets current text.
+
+        Args:
+            text (str): new text.
+        """
+        if text != self.get_value():
+            self.get_custom_widget().setText(text)
+            self.on_value_changed()            
+
 
 class NodeCheckBox(NodeBaseWidget):
     """

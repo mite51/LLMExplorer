@@ -13,6 +13,7 @@ from NodeGraphQt import NodeGraph, BaseNode
 
 GO = "go"
 STOP = "stop"
+NODE_SPACING = 50.0
 
 class LLMExplorer(QMainWindow):
     llm_button:QPushButton = None
@@ -23,6 +24,7 @@ class LLMExplorer(QMainWindow):
         self.response_generator = llm_generator.ResponseGeneratorThread()
         self.response_generator.new_data_signal.connect(self.update_data)
         self.response_generator.max_response_length = 12
+        self.prev_node = None
 
         self.setWindowTitle("LLM Explorer")
         self.setGeometry(100, 100, 1200, 800)
@@ -118,11 +120,22 @@ class LLMExplorer(QMainWindow):
     @Slot(llm_generator.SampleData, str)
     def update_data(self, sample_data: llm_generator.SampleData, decoded_token: str):
         self.chat_history.insertPlainText(decoded_token)
+
+        node = llm_generator.TokenNode(sample_data)
+        #node.set_name(decoded_token)
+        self.graph_view.add_node(node)
+        if self.prev_node:
+            prev_node_width = self.prev_node.view.boundingRect().width()
+            node.set_x_pos(self.prev_node.x_pos() + prev_node_width + NODE_SPACING)
+            node.set_y_pos(self.prev_node.y_pos())
+            self.prev_node.set_output(0, node.input(0))
+        else:
+            node.set_pos(10,10)    
+        self.prev_node = node    
+
         #force an update
         QCoreApplication.processEvents()
 
-        node = llm_generator.TokenNode(sample_data)
-        self.graph_view.add_node(node)
 
     def select_model(self):
         file_name, _ = QFileDialog.getOpenFileName(self, "Select LLM Model")

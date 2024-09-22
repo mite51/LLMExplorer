@@ -2,19 +2,28 @@ import llama_cpp
 
 from typing import List, Tuple
 from PySide6.QtCore import QThread, Signal, QMutex, QMutexLocker
-from NodeGraphQt import NodeGraph, BaseNode
+from NodeGraphQt import NodeGraph, BaseNode 
+from NodeGraphQt.widgets.node_widgets import NodeLabel
 
-def top_x_values_with_indices(values, top_X) -> List[Tuple[str, float]]:
+class TokenSampleData():
+    token: str = ""
+    attention_score: float = 0.0
+    decoded_token: str = ""    
+    def __init__(self, _token: str, _attention_score: float ):
+        self.token = _token
+        self.attention_score = _attention_score
+
+def top_x_values_with_indices(values, top_X) -> List[TokenSampleData]:
     indexed_values = list(enumerate(values))
     indexed_values.sort(key=lambda x: x[1], reverse=True)
     top_x = indexed_values[:top_X]
     top_x_sorted = sorted(top_x, key=lambda x: x[1], reverse=True)
-    return [(token, attention_score) for token, attention_score in top_x_sorted]
+    return [TokenSampleData(token, attention_score) for token, attention_score in top_x_sorted]
 
 class SampleData:
-    def __init__(self, token_index: int, top_n_results:List[Tuple[str, float]]  ):
+    def __init__(self, token_index: int, top_n_results:List[TokenSampleData]  ):
         self.token_index:int = token_index
-        self.top_n: List[Tuple[str, float]] = top_n_results
+        self.top_n: List[TokenSampleData] = top_n_results
 
 class TokenNode(BaseNode):
     # unique node identifier domain.
@@ -36,6 +45,18 @@ class TokenNode(BaseNode):
         # create output ports.
         self.add_output('next')
         self.add_output('alt')
+
+        sample_data = self.data.top_n[self.data.token_index]
+        self.add_custom_widget(NodeLabel(self.view, "token:",text=sample_data.decoded_token))
+        self.add_custom_widget(NodeLabel(self.view, "attention_score:",text=str(sample_data.attention_score)))
+
+        
+        # create the QComboBox menu.
+        items = []
+        for sample in self.data.top_n:
+            items.append(sample.decoded_token)
+        self.add_combo_menu('top n', 'Menu Test', items=items, tooltip='example custom tooltip')
+        
 
     def get_token(self)->float:
         return self.top_n[self.token_index][0]
@@ -100,6 +121,11 @@ class ResponseGeneratorThread(QThread):
 
                         attention_scores = self.llm.scores[sample_idx]
                         top_n_scores = top_x_values_with_indices(attention_scores, 10)
+
+                        for n in top_n_scores:
+                            detokenized = self.llm.detokenize([n.token])
+                            decoded = detokenized.decode("utf-8")
+                            n.decoded_token = decoded
                         
                         sample_data = SampleData(0, top_n_scores)
                         self.response_data.append(sample_data)
