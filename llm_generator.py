@@ -1,7 +1,7 @@
 import llama_cpp
 
 from typing import List, Tuple
-from PyQt6.QtCore import QThread, pyqtSignal, QMutex, QMutexLocker
+from PySide6.QtCore import QThread, Signal, QMutex, QMutexLocker
 
 def top_x_values_with_indices(values, top_X) -> List[Tuple[str, float]]:
     indexed_values = list(enumerate(values))
@@ -25,7 +25,7 @@ class TokenNode:
         return self.top_n[self.token_index][1]
 
 class ResponseGeneratorThread(QThread):
-    new_data_signal = pyqtSignal(TokenNode, str)
+    new_data_signal = Signal(TokenNode, str)
 
     llm = None
     response_graph = None

@@ -3,11 +3,11 @@ import llama_cpp
 import llm_generator
 
 from typing import List, Tuple
-from PyQt6.QtWidgets import (QApplication, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout, 
-                             QTextEdit, QLineEdit, QPushButton, QFileDialog, QGraphicsView, 
-                             QGraphicsScene, QLabel, QSplitter)
-from PyQt6.QtGui import QColor, QPen, QBrush, QTextCursor
-from PyQt6.QtCore import QCoreApplication, Qt, QRectF, pyqtSlot
+from PySide6.QtWidgets import (QApplication, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout, 
+                               QTextEdit, QLineEdit, QPushButton, QFileDialog, QGraphicsView, 
+                               QGraphicsScene, QLabel, QSplitter)
+from PySide6.QtGui import QColor, QPen, QBrush, QTextCursor
+from PySide6.QtCore import QCoreApplication, Qt, QRectF, Slot
 
 
 class LLMExplorer(QMainWindow):
@@ -27,7 +27,7 @@ class LLMExplorer(QMainWindow):
         main_layout.setContentsMargins(10, 10, 10, 10)
 
         # Create a splitter for resizable panels
-        splitter = QSplitter(Qt.Orientation.Horizontal)
+        splitter = QSplitter(Qt.Horizontal)
 
         # Chat Session Panel
         chat_widget = QWidget()
@@ -89,21 +89,21 @@ class LLMExplorer(QMainWindow):
         main_widget.setLayout(main_layout)
         self.setCentralWidget(main_widget)
 
-    @pyqtSlot()
+    @Slot()
     def start_generating(self):
-       self.response_generator.start()
+        self.response_generator.start()
         #self.start_button.setEnabled(False)
         #self.stop_button.setEnabled(True)
 
-    @pyqtSlot()
+    @Slot()
     def stop_generating(self):
         self.response_generator.stop()
         self.response_generator.wait()
         #self.start_button.setEnabled(True)
         #self.stop_button.setEnabled(False)
 
-    @pyqtSlot(llm_generator.TokenNode, str)
-    def update_data(self, new_node:llm_generator.TokenNode, decoded_token:str):
+    @Slot(llm_generator.TokenNode, str)
+    def update_data(self, new_node: llm_generator.TokenNode, decoded_token: str):
         self.chat_history.insertPlainText(decoded_token)
         #force an update
         QCoreApplication.processEvents()
@@ -128,18 +128,8 @@ class LLMExplorer(QMainWindow):
         self.response_generator.start(prompt)
 
     def update_response_graph(self, response):
-        # Clear previous graph
-        self.graph_scene.clear()
-
-        # Create and layout nodes for each token in the response
-        # This is a placeholder implementation. You'll need to create the actual
-        # graph structure with probabilities and alternatives.
-        tokens = response.split()
-        for i, token in enumerate(tokens):
-            node = self.graph_scene.addRect(QRectF(i * 100, 0, 80, 40))
-            text = self.graph_scene.addText(token)
-            text.setPos(i * 100, 0)
-
+        # TODO
+        pass
 
 
 if __name__ == "__main__":
