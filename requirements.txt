@@ -1,2 +1,3 @@
 pip install PySide6
 pip install llama-cpp-python
+pip install NodeGraphQt

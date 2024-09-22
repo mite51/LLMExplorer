@@ -2,6 +2,7 @@ import llama_cpp
 
 from typing import List, Tuple
 from PySide6.QtCore import QThread, Signal, QMutex, QMutexLocker
+from NodeGraphQt import NodeGraph, BaseNode
 
 def top_x_values_with_indices(values, top_X) -> List[Tuple[str, float]]:
     indexed_values = list(enumerate(values))
@@ -10,13 +11,31 @@ def top_x_values_with_indices(values, top_X) -> List[Tuple[str, float]]:
     top_x_sorted = sorted(top_x, key=lambda x: x[1], reverse=True)
     return [(token, attention_score) for token, attention_score in top_x_sorted]
 
-class TokenNode:
+class SampleData:
     def __init__(self, token_index: int, top_n_results:List[Tuple[str, float]]  ):
         self.token_index:int = token_index
         self.top_n: List[Tuple[str, float]] = top_n_results
+
+class TokenNode(BaseNode):
+    # unique node identifier domain.
+    __identifier__ = 'LLMExplorer'
+    # initial default node name.
+    NODE_NAME = 'TokenNode'    
+
+    def __init__(self, data: SampleData ):
+        super(TokenNode, self).__init__()
+        self.data:SampleData = data
+        self.prev:TokenNode = None
         self.next:TokenNode = None
         self.alt:TokenNode = None
-        self.widget = None
+
+        # create input ports.
+        self.add_input('prev', color=(180, 80, 0))
+        self.add_input('parent', color=(180, 80, 0))
+
+        # create output ports.
+        self.add_output('next')
+        self.add_output('alt')
 
     def get_token(self)->float:
         return self.top_n[self.token_index][0]
@@ -25,17 +44,19 @@ class TokenNode:
         return self.top_n[self.token_index][1]
 
 class ResponseGeneratorThread(QThread):
-    new_data_signal = Signal(TokenNode, str)
+    new_data_signal = Signal(SampleData, str)
 
     llm = None
-    response_graph = None
+    response_data = []
+    prompt = ""
 
     def __init__(self):
         super().__init__()
         self._is_running = False
         self.llm = None
-        self.response_graph = TokenNode(0,[])
+        self.response_data = []
         self.response_text = ""
+        self.max_response_length = 0
         self.mutex = QMutex()  # Create a mutex for thread synchronization
 
     def load_model(self, model_path) -> str:
@@ -50,12 +71,14 @@ class ResponseGeneratorThread(QThread):
             result = "load aborted, model in use"                
         return result        
 
-    def start(self, prompt):
-        if self.llm:
+    # thread entry point
+    def run(self):    
+        if self.llm and len(self.prompt) > 0:
             self._is_running = True
             self.response_text = ""
+            response_length = 0
             loop = True
-            prompt_tokens = self.llm.tokenize(prompt.encode())
+            prompt_tokens = self.llm.tokenize(self.prompt.encode())
             sample_idx = self.llm.n_tokens + len(prompt_tokens) - 1            
             while self._is_running and loop:
                 self.llm.eval(prompt_tokens)
@@ -78,13 +101,18 @@ class ResponseGeneratorThread(QThread):
                         attention_scores = self.llm.scores[sample_idx]
                         top_n_scores = top_x_values_with_indices(attention_scores, 10)
                         
-                        token_node = TokenNode(0, top_n_scores)
-                        self.response_graph.next = token_node
+                        sample_data = SampleData(0, top_n_scores)
+                        self.response_data.append(sample_data)
                         
-                        self.new_data_signal.emit(token_node, response_token_decoded)
+                        self.new_data_signal.emit(sample_data, response_token_decoded)
 
                     #
                     sample_idx += 1
+                    response_length += 1
+
+                    if self.max_response_length > 0 and response_length > self.max_response_length:
+                        loop = False
+                        break
 
                     if sample_idx < self.llm.n_tokens and token != self.llm._input_ids[sample_idx]:
                         self.llm.n_tokens = sample_idx
@@ -95,10 +123,10 @@ class ResponseGeneratorThread(QThread):
     def stop(self):
         self._is_running = False
 
-    def get_response_graph(self):
+    def get_response_data(self):#
         # Ensure thread-safe access to data
         with QMutexLocker(self.mutex):
-            return self.response_graph.copy()
+            return self.response_data.copy()
         
     def get_response_text(self):
         # Ensure thread-safe access to data
