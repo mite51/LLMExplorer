@@ -1,29 +1,24 @@
 import llama_cpp
+from llama_cpp._internals import _LlamaTokenDataArray
 
 from typing import List, Tuple
 from PySide6.QtCore import QThread, Signal, QMutex, QMutexLocker
 from NodeGraphQt import NodeGraph, BaseNode 
 from NodeGraphQt.widgets.node_widgets import NodeLabel
 
-class TokenSampleData():
-    token: str = ""
-    attention_score: float = 0.0
-    decoded_token: str = ""    
-    def __init__(self, _token: str, _attention_score: float ):
-        self.token = _token
-        self.attention_score = _attention_score
-
-def top_x_values_with_indices(values, top_X) -> List[TokenSampleData]:
-    indexed_values = list(enumerate(values))
-    indexed_values.sort(key=lambda x: x[1], reverse=True)
-    top_x = indexed_values[:top_X]
-    top_x_sorted = sorted(top_x, key=lambda x: x[1], reverse=True)
-    return [TokenSampleData(token, attention_score) for token, attention_score in top_x_sorted]
-
 class SampleData:
-    def __init__(self, token_index: int, top_n_results:List[TokenSampleData]  ):
+    def __init__(self, decoded_token: str, token_index: int, token_data_array:_LlamaTokenDataArray, decoded_tokens: List[str]):
+        self.decoded_token = decoded_token
         self.token_index:int = token_index
-        self.top_n: List[TokenSampleData] = top_n_results
+        self.token_data_array:_LlamaTokenDataArray = token_data_array
+        self.decoded_tokens:List[str] = decoded_tokens
+
+    def get_logit(self) -> float:
+        return self.token_data_array.candidates_data[self.token_index].logit
+    
+    # could be softmax, but not necessarily
+    def get_p(self) -> float:
+        return self.token_data_array.candidates_data[self.token_index].p    
 
 class TokenNode(BaseNode):
     # unique node identifier domain.
@@ -46,23 +41,13 @@ class TokenNode(BaseNode):
         self.add_output('next')
         self.add_output('alt')
 
-        sample_data = self.data.top_n[self.data.token_index]
-        self.add_custom_widget(NodeLabel(self.view, "token:",text=sample_data.decoded_token))
-        self.add_custom_widget(NodeLabel(self.view, "attention_score:",text=str(sample_data.attention_score)))
-
+        self.add_custom_widget(NodeLabel(self.view, "token:",text=self.data.decoded_token))
+        self.add_custom_widget(NodeLabel(self.view, "logit:",text=str(self.data.get_logit())))
+        self.add_custom_widget(NodeLabel(self.view, "p:",text=str(self.data.get_p())))
         
         # create the QComboBox menu.
-        items = []
-        for sample in self.data.top_n:
-            items.append(sample.decoded_token)
-        self.add_combo_menu('top n', 'Menu Test', items=items, tooltip='example custom tooltip')
-        
-
-    def get_token(self)->float:
-        return self.top_n[self.token_index][0]
-
-    def get_attention_score(self)->float:
-        return self.top_n[self.token_index][1]
+        items = self.data.decoded_tokens
+        self.add_combo_menu('candidates', 'Menu Test', items=items)
 
 class ResponseGeneratorThread(QThread):
     new_data_signal = Signal(SampleData, str)
@@ -119,15 +104,20 @@ class ResponseGeneratorThread(QThread):
                         response_token_decoded = detokenized.decode("utf-8")
                         self.response_text += response_token_decoded
 
-                        attention_scores = self.llm.scores[sample_idx]
-                        top_n_scores = top_x_values_with_indices(attention_scores, 10)
+                        selected_token_index = -1
+                        decoded_tokens: List[str] = []
+                        for i in range(self.llm.token_data_array.candidates.size):  
+                            candidate_data = self.llm.token_data_array.candidates_data
+                            candidate_token = candidate_data.id[i]
+                            detokenized = self.llm.detokenize([candidate_token])
+                            decoded = detokenized.decode("utf-8")                            
+                            decoded_tokens.append(decoded)
+                            
+                            if token == candidate_token:
+                                selected_token_index = i
 
-                        for n in top_n_scores:
-                            detokenized = self.llm.detokenize([n.token])
-                            decoded = detokenized.decode("utf-8")
-                            n.decoded_token = decoded
-                        
-                        sample_data = SampleData(0, top_n_scores)
+                        #print(f"*** decoded_tokens={decoded_tokens}")
+                        sample_data = SampleData(response_token_decoded, selected_token_index, self.llm.token_data_array, decoded_tokens)
                         self.response_data.append(sample_data)
                         
                         self.new_data_signal.emit(sample_data, response_token_decoded)

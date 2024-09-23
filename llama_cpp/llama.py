@@ -731,6 +731,8 @@ class Llama:
             id=id,
             apply_grammar=grammar is not None,
         )
+        #JW
+        self.token_data_array = sampling_context.get_token_data_array()
         return id
 
     def generate(
