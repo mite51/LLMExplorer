@@ -34,16 +34,19 @@ class TokenNode(BaseNode):
         self.alt:TokenNode = None
 
         # create input ports.
-        self.add_input('prev', color=(180, 80, 0))
-        self.add_input('parent', color=(180, 80, 0))
+        self.add_input('b', color=(180, 80, 0)) #back
+        self.add_input('p', color=(180, 80, 0)) #parent
 
         # create output ports.
-        self.add_output('next')
-        self.add_output('alt')
+        self.add_output('f') #forward 
+        self.add_output('c') #child
 
-        self.add_custom_widget(NodeLabel(self.view, "token:",text=self.data.decoded_token))
-        self.add_custom_widget(NodeLabel(self.view, "logit:",text=str(self.data.get_logit())))
-        self.add_custom_widget(NodeLabel(self.view, "p:",text=str(self.data.get_p())))
+
+        self.NODE_NAME = self.data.decoded_token
+        #self.add_custom_widget(NodeLabel(self.view, "token:",text=self.data.decoded_token))
+        
+        self.add_custom_widget(NodeLabel(self.view, "logit:",text=str(round(self.data.get_logit(),2))))
+        self.add_custom_widget(NodeLabel(self.view, "p:",text=str(round(self.data.get_p(),2))))
         
         # create the QComboBox menu.
         items = self.data.decoded_tokens
