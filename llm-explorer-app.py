@@ -4,16 +4,26 @@ import llm_generator
 
 from typing import List, Tuple
 from PySide6.QtWidgets import (QApplication, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout, 
-                               QTextEdit, QLineEdit, QPushButton, QFileDialog, QGraphicsView, 
-                               QGraphicsScene, QLabel, QSplitter)
+                               QTextEdit, QLineEdit, QPushButton, QFileDialog,  
+                               QLabel, QSplitter)
 from PySide6.QtGui import QColor, QPen, QBrush, QTextCursor
 from PySide6.QtCore import QCoreApplication, Qt, QRectF, Slot
 
-from NodeGraphQt import NodeGraph, BaseNode
+from CustomNodeWidget import Node, CustomLayout, ScrollArea
 
 GO = "go"
 STOP = "stop"
 NODE_SPACING = 50.0
+
+"""
+TODO:
+[ ] Add temp, top_n, top_k gui
+[ ] Hook up drop down selection to create a new response stream
+[ ] Add the full resonse above the nodes in the node row.. just for easy readability hopefully
+[ ] create a metric from logits and or softmax to quantify hallicination/certainty
+[ ] Try generating N responses, then ask LLM to pick the best
+    [ ] can the LLM identify hallicinated reponses? 
+"""
 
 class LLMExplorer(QMainWindow):
     llm_button:QPushButton = None
@@ -24,7 +34,6 @@ class LLMExplorer(QMainWindow):
         self.response_generator = llm_generator.ResponseGeneratorThread()
         self.response_generator.new_data_signal.connect(self.update_data)
         self.response_generator.max_response_length = 12
-        self.prev_node = None
 
         self.setWindowTitle("LLM Explorer")
         self.setGeometry(100, 100, 1200, 800)
@@ -48,19 +57,17 @@ class LLMExplorer(QMainWindow):
         chat_layout.addWidget(self.chat_history)
         splitter.addWidget(chat_widget)
 
-        # Current Response Graph Panel
-        self.graph_view = NodeGraph()
-        # register the FooNode node class.
-        self.graph_view.register_node(llm_generator.TokenNode)
+        # Current Response Node Panel
+        self.node_scroll_area = ScrollArea()
+        self.current_node_row = 0
 
-        graph_widget = QWidget()
-        graph_layout = QVBoxLayout(graph_widget)
-        graph_label = QLabel("Response Graph")
-        graph_label.setStyleSheet("font-weight: bold; font-size: 14px;")
-        graph_layout.addWidget(graph_label)
-        graph_layout.addWidget(self.graph_view.widget)
-        splitter.addWidget(graph_widget)
-
+        node_view_widget = QWidget()
+        node_view_layout = QVBoxLayout(node_view_widget)
+        node_view_label = QLabel("Response Nodes")
+        node_view_label.setStyleSheet("font-weight: bold; font-size: 14px;")
+        node_view_layout.addWidget(node_view_label)
+        node_view_layout.addWidget(self.node_scroll_area)
+        splitter.addWidget(node_view_widget)
 
         # Prompt Panel
         prompt_widget = QWidget()
@@ -97,7 +104,7 @@ class LLMExplorer(QMainWindow):
 
         # Set stretch factors for the splitter
         splitter.setStretchFactor(0, 1)  # Chat session
-        splitter.setStretchFactor(1, 2)  # Response graph
+        splitter.setStretchFactor(1, 2)  # Response nodes
         splitter.setStretchFactor(2, 1)  # Prompt panel
 
         main_layout.addWidget(splitter)
@@ -107,31 +114,19 @@ class LLMExplorer(QMainWindow):
     @Slot()
     def start_generating(self):
         self.response_generator.start()
-        #self.start_button.setEnabled(False)
-        #self.stop_button.setEnabled(True)
 
     @Slot()
     def stop_generating(self):
         self.response_generator.stop()
         self.response_generator.wait()
-        #self.start_button.setEnabled(True)
-        #self.stop_button.setEnabled(False)
 
     @Slot(llm_generator.SampleData, str)
     def update_data(self, sample_data: llm_generator.SampleData, decoded_token: str):
         self.chat_history.insertPlainText(decoded_token)
 
-        node = llm_generator.TokenNode(sample_data)
-        #node.set_name(decoded_token)
-        self.graph_view.add_node(node)
-        if self.prev_node:
-            prev_node_width = self.prev_node.view.boundingRect().width()
-            node.set_x_pos(self.prev_node.x_pos() + prev_node_width + NODE_SPACING)
-            node.set_y_pos(self.prev_node.y_pos())
-            self.prev_node.set_output(0, node.input(0))
-        else:
-            node.set_pos(10,10)    
-        self.prev_node = node    
+        node = Node(decoded_token)
+        self.node_scroll_area.add_node(node, self.current_node_row)
+        node.alternatives_combo.addItems(sample_data.alt_decoded_tokens)
 
         #force an update
         QCoreApplication.processEvents()
