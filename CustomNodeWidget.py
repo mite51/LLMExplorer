@@ -4,10 +4,12 @@ from PySide6.QtCore import Qt, QSize, QRect, QPoint
 from PySide6.QtGui import QPainter, QColor
 
 class Node(QFrame):
-    expander_padding = 45
-    def __init__(self, token, parent=None):
+    expander_padding = 10
+    def __init__(self, token, logit, p, parent=None):
         super().__init__(parent)
         self.token = token
+        self.logit = logit
+        self.p = p
         self.is_expanded = True
         self.setup_ui()
 
@@ -22,7 +24,7 @@ class Node(QFrame):
         layout.setAlignment(Qt.AlignmentFlag.AlignTop)
 
         header = QHBoxLayout()
-        self.token_label = QLabel(self.token)
+        self.token_label = QLabel(self.token.strip())
         self.expand_button = QPushButton("▼" if self.is_expanded else "▲")
         self.expand_button.setFixedSize(20, 20)
         self.expand_button.clicked.connect(self.toggle_expand)
@@ -36,8 +38,8 @@ class Node(QFrame):
         self.content_layout = QVBoxLayout(self.content)
         self.content_layout.setContentsMargins(0, 0, 0, 0)
         self.content_layout.setSpacing(2)
-        self.content_layout.addWidget(QLabel("Logit = 12.3"))
-        self.content_layout.addWidget(QLabel("P=0.23"))
+        self.content_layout.addWidget(QLabel(f"Logit = {self.logit:.2f}"))
+        self.content_layout.addWidget(QLabel(f"p={self.p:.2f}"))
         self.alternatives_combo = QComboBox()
         self.content_layout.addWidget(self.alternatives_combo)
 

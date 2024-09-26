@@ -5,18 +5,32 @@ from typing import List, Tuple
 from PySide6.QtCore import QThread, Signal, QMutex, QMutexLocker
 
 class SampleData:
-    def __init__(self, decoded_token: str, token_index: int, token_data_array:_LlamaTokenDataArray, alt_decoded_tokens: List[str]):
+    def __init__(self, decoded_token: str, token_index: int, token_data_array:_LlamaTokenDataArray):
         self.decoded_token = decoded_token
         self.token_index:int = token_index
         self.token_data_array:_LlamaTokenDataArray = token_data_array
-        self.alt_decoded_tokens:List[str] = alt_decoded_tokens
 
     def get_logit(self) -> float:
         return self.token_data_array.candidates_data[self.token_index].logit
     
     # could be softmax, but not necessarily
     def get_p(self) -> float:
-        return self.token_data_array.candidates_data[self.token_index].p    
+        return self.token_data_array.candidates_data[self.token_index].p  
+
+    def get_candidate_count(self) -> int:
+        return self.token_data_array.candidates.size
+
+    def get_canidate_logit(self, i:int) -> float:
+        return self.token_data_array.candidates_data[i].logit
+
+    def get_canidate_p(self, i:int) -> float:
+        return self.token_data_array.candidates_data[i].p
+
+    def get_canidate_decodedtoken(self, i:int, llm) -> float:
+        candidate_token = self.token_data_array.candidates_data.id[i]
+        detokenized = llm.detokenize([candidate_token])
+        decoded = detokenized.decode("utf-8")    
+        return decoded
 
 class ResponseGeneratorThread(QThread):
     new_data_signal = Signal(SampleData, str)
@@ -73,19 +87,15 @@ class ResponseGeneratorThread(QThread):
                         response_token_decoded = detokenized.decode("utf-8")
                         self.response_text += response_token_decoded
 
+                        # find the index of the selected token
                         selected_token_index = -1
-                        alt_decoded_tokens: List[str] = []
                         for i in range(self.llm.token_data_array.candidates.size):  
                             candidate_data = self.llm.token_data_array.candidates_data
                             candidate_token = candidate_data.id[i]
-                            detokenized = self.llm.detokenize([candidate_token])
-                            decoded = detokenized.decode("utf-8")                            
-                            alt_decoded_tokens.append(decoded)
-                            
                             if token == candidate_token:
                                 selected_token_index = i
 
-                        sample_data = SampleData(response_token_decoded, selected_token_index, self.llm.token_data_array, alt_decoded_tokens)
+                        sample_data = SampleData(response_token_decoded, selected_token_index, self.llm.token_data_array)
                         self.response_data.append(sample_data)
                         
                         self.new_data_signal.emit(sample_data, response_token_decoded)

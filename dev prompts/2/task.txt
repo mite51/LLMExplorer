@@ -1,0 +1,8 @@
+I'd like create a new widget with pyside6 in python. The widget looks like a node, but it wont have connections and is not drag-able. The nodes are meant to be displayed in a scroll-able area. The scroll view area should automatically lay out all children in grid like way, but not exactly, allow me to explain. 
+
+The layout area will have rows, and the height of each row should be the max height of any other nodes in that row. The width of each cell in a row is the width of the node in that cell, the widths of cells in the same column on a different row may not be the same.. if there is no node in the cell, the width is the width of the same column in the row above. Perhaps the best way to do this is to have each row have a "left_margin:int" value specifying the number of node widths to accumulate as a left margin.
+
+Collapsing a node will shrink the height to show only the Token, expanding a node will increase its height to show the other gui elements, and if its the tallest node in a row. Any collapsed nodes in a row will remain the same size and be anchored to the top of the row. All the lower rows will move down to make room.
+
+Implement all the features outlined above, my life depends on you getting this correct the first time.
+

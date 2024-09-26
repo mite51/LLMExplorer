@@ -20,9 +20,12 @@ TODO:
 [ ] Add temp, top_n, top_k gui
 [ ] Hook up drop down selection to create a new response stream
 [ ] Add the full resonse above the nodes in the node row.. just for easy readability hopefully
-[ ] create a metric from logits and or softmax to quantify hallicination/certainty
+[ ] Create a metric from logits and or softmax to quantify hallicination/certainty
 [ ] Try generating N responses, then ask LLM to pick the best
     [ ] can the LLM identify hallicinated reponses? 
+    [ ] should "roll again" be an option?
+    [ ] or "think more deeply" about this?
+[ ] Think about how to integrate token vector space exploration
 """
 
 class LLMExplorer(QMainWindow):
@@ -124,9 +127,16 @@ class LLMExplorer(QMainWindow):
     def update_data(self, sample_data: llm_generator.SampleData, decoded_token: str):
         self.chat_history.insertPlainText(decoded_token)
 
-        node = Node(decoded_token)
+        node = Node(decoded_token, sample_data.get_logit(), sample_data.get_p())
         self.node_scroll_area.add_node(node, self.current_node_row)
-        node.alternatives_combo.addItems(sample_data.alt_decoded_tokens)
+
+        items = []
+        for i in range(sample_data.get_candidate_count()):
+            decoded_token = sample_data.get_canidate_decodedtoken(i, self.response_generator.llm)
+            logit = sample_data.get_canidate_logit(i)
+            p = sample_data.get_canidate_p(i)
+            items.append(f"{decoded_token.strip()},{p:.2f},{logit:.2f}")
+        node.alternatives_combo.addItems(items)
 
         #force an update
         QCoreApplication.processEvents()
