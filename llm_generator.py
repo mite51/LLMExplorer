@@ -3,6 +3,7 @@ from llama_cpp._internals import _LlamaTokenDataArray
 
 from typing import List, Tuple
 from PySide6.QtCore import QThread, Signal, QMutex, QMutexLocker
+from util.serializable import ISerializable
 
 class SampleData:
     def __init__(self, decoded_token: str, token_index: int, token_data_array:_LlamaTokenDataArray):
@@ -32,17 +33,31 @@ class SampleData:
         decoded = detokenized.decode("utf-8")    
         return decoded
 
+class SampleSettings(ISerializable):
+    def __init__(self):  
+        self.top_k: int = 40
+        self.top_p: float = 0.95
+        self.min_p: float = 0.05
+        self.typical_p: float = 1.0
+        self.temp: float = 0.80
+        self.repeat_penalty: float = 1.0
+        self.frequency_penalty: float = 0.0
+        self.presence_penalty: float = 0.0
+        self.tfs_z: float = 1.0
+        self.mirostat_mode: int = 0
+        self.mirostat_eta: float = 0.1
+        self.mirostat_tau: float = 5.0
+        self.penalize_nl: bool = True
+
 class ResponseGeneratorThread(QThread):
     new_data_signal = Signal(SampleData, str)
-
-    llm = None
-    response_data = []
-    prompt = ""
 
     def __init__(self):
         super().__init__()
         self._is_running = False
         self.llm = None
+        self.settings:SampleSettings = SampleSettings()
+        self.prompt =""
         self.response_data = []
         self.response_text = ""
         self.max_response_length = 0
@@ -72,7 +87,21 @@ class ResponseGeneratorThread(QThread):
             while self._is_running and loop:
                 self.llm.eval(prompt_tokens)
                 while sample_idx < self.llm.n_tokens:
-                    token = self.llm.sample(idx=sample_idx) #todo add temp, top_k, top_p
+                    token = self.llm.sample(idx=sample_idx,
+                                            top_k = self.settings.top_k,
+                                            top_p = self.settings.top_p,
+                                            min_p = self.settings.min_p,
+                                            typical_p = self.settings.typical_p,
+                                            temp = self.settings.temp,
+                                            repeat_penalty = self.settings.repeat_penalty,
+                                            frequency_penalty = self.settings.frequency_penalty,
+                                            presence_penalty = self.settings.presence_penalty,
+                                            tfs_z = self.settings.tfs_z,
+                                            mirostat_mode = self.settings.mirostat_mode,
+                                            mirostat_eta = self.settings.mirostat_eta,
+                                            mirostat_tau = self.settings.mirostat_tau,
+                                            penalize_nl = self.settings.penalize_nl,                                            
+                                            )
 
                     loop = not llama_cpp.llama_token_is_eog(self.llm._model.model, token)
 

@@ -80,6 +80,13 @@ class CustomLayout(QWidget):
         node.setParent(self)
         self.update_layout()
 
+    def clear_nodes(self):
+        for row in self.rows:
+            for node, _column in row:
+                node.setParent(None)
+
+        self.rows = []        
+
     def update_layout(self):
         max_x = 0
         y = self.contentsMargins().top()

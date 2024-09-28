@@ -1,5 +1,4 @@
 import sys
-import llama_cpp
 import llm_generator
 
 from typing import List, Tuple
@@ -10,7 +9,7 @@ from PySide6.QtGui import QColor, QPen, QBrush, QTextCursor
 from PySide6.QtCore import QCoreApplication, Qt, QRectF, Slot
 
 from CustomNodeWidget import Node, CustomLayout, ScrollArea
-
+from util.properties_widget import PropertiesWidget
 GO = "go"
 STOP = "stop"
 NODE_SPACING = 50.0
@@ -29,10 +28,11 @@ TODO:
 """
 
 class LLMExplorer(QMainWindow):
-    llm_button:QPushButton = None
 
     def __init__(self):
         super().__init__()
+
+        self.sample_settings:llm_generator.SampleSettings = llm_generator.SampleSettings()
 
         self.response_generator = llm_generator.ResponseGeneratorThread()
         self.response_generator.new_data_signal.connect(self.update_data)
@@ -72,7 +72,30 @@ class LLMExplorer(QMainWindow):
         node_view_layout.addWidget(self.node_scroll_area)
         splitter.addWidget(node_view_widget)
 
-        # Prompt Panel
+        # Model Select
+        model_label = QLabel("Model Selection")
+        model_label.setStyleSheet("font-weight: bold; font-size: 14px;")
+        self.model_path_input = QLineEdit()
+        self.model_path_input.setPlaceholderText("Model path")
+        self.model_path_button = QPushButton("Select Model")
+        self.model_path_button.clicked.connect(self.select_model)
+        model_select_layout = QHBoxLayout()
+        model_select_layout.addWidget(model_label)
+        model_select_layout.addWidget(self.model_path_input)
+        model_select_layout.addWidget(self.model_path_button)
+
+        # sample settings [ ] Add temp, top_n, top_k gui
+        settings_widget = QWidget()
+        settings_layout = QVBoxLayout(settings_widget)
+        settings_label = QLabel("Sample settings")
+        settings_label.setStyleSheet("font-weight: bold; font-size: 14px;")
+        properties_widget = PropertiesWidget(orientation=Qt.Horizontal)
+        properties_widget.set_object(self.sample_settings)
+        settings_layout = QHBoxLayout()
+        settings_layout.addWidget(settings_label)
+        settings_layout.addWidget(properties_widget)
+
+        # Prompt 
         prompt_widget = QWidget()
         prompt_layout = QVBoxLayout(prompt_widget)
         prompt_label = QLabel("Prompt")
@@ -86,22 +109,12 @@ class LLMExplorer(QMainWindow):
         prompt_input_layout.addWidget(self.prompt_input)
         prompt_input_layout.addWidget(self.llm_button)
 
-        
-        # Model Path Input
-        model_label = QLabel("Model Selection")
-        model_label.setStyleSheet("font-weight: bold; font-size: 14px;")
-        self.model_path_input = QLineEdit()
-        self.model_path_input.setPlaceholderText("Model path")
-        self.model_path_button = QPushButton("Select Model")
-        self.model_path_button.clicked.connect(self.select_model)
-        model_layout = QHBoxLayout()
-        model_layout.addWidget(model_label)
-        model_layout.addWidget(self.model_path_input)
-        model_layout.addWidget(self.model_path_button)
-
-        prompt_layout.addLayout(prompt_input_layout)
+        # 
+        prompt_layout.addLayout(model_select_layout)
         prompt_layout.addSpacing(20)
-        prompt_layout.addLayout(model_layout)
+        prompt_layout.addLayout(settings_layout)
+        prompt_layout.addSpacing(20)        
+        prompt_layout.addLayout(prompt_input_layout)
         prompt_layout.addStretch(1)
         splitter.addWidget(prompt_widget)
 
@@ -113,7 +126,7 @@ class LLMExplorer(QMainWindow):
         main_layout.addWidget(splitter)
         main_widget.setLayout(main_layout)
         self.setCentralWidget(main_widget)
-
+    """
     @Slot()
     def start_generating(self):
         self.response_generator.start()
@@ -122,7 +135,7 @@ class LLMExplorer(QMainWindow):
     def stop_generating(self):
         self.response_generator.stop()
         self.response_generator.wait()
-
+    """
     @Slot(llm_generator.SampleData, str)
     def update_data(self, sample_data: llm_generator.SampleData, decoded_token: str):
         self.chat_history.insertPlainText(decoded_token)
@@ -158,8 +171,12 @@ class LLMExplorer(QMainWindow):
             self.chat_history.append(f"<font color='green'>User:</font> {prompt}")
             self.prompt_input.clear()
 
+            #     
+            self.node_scroll_area.custom_layout.clear_nodes()
+
             # Generate response
             self.response_generator.prompt = prompt
+            self.response_generator.settings = self.sample_settings            
             self.response_generator.start()
 
             self.llm_button.setText(STOP)
