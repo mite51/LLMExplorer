@@ -16,8 +16,9 @@ NODE_SPACING = 50.0
 
 """
 TODO:
-[ ] Add temp, top_n, top_k gui
-[ ] Hook up drop down selection to create a new response stream
+[x] Add temp, top_n, top_k gui
+[x] Hook up drop down selection to create a new response stream
+    [ ] should make the nodes much more compact
 [ ] Add the full resonse above the nodes in the node row.. just for easy readability hopefully
 [ ] Create a metric from logits and or softmax to quantify hallicination/certainty
 [ ] Try generating N responses, then ask LLM to pick the best
@@ -33,9 +34,12 @@ class LLMExplorer(QMainWindow):
         super().__init__()
 
         self.sample_settings:llm_generator.SampleSettings = llm_generator.SampleSettings()
+        self.prev_prompt = ""
+        self.prev_node:Node = None
 
         self.response_generator = llm_generator.ResponseGeneratorThread()
         self.response_generator.new_data_signal.connect(self.update_data)
+        self.response_generator.end_of_response.connect(self.end_of_response)
         self.response_generator.max_response_length = 12
 
         self.setWindowTitle("LLM Explorer")
@@ -63,6 +67,7 @@ class LLMExplorer(QMainWindow):
         # Current Response Node Panel
         self.node_scroll_area = ScrollArea()
         self.current_node_row = 0
+        self.current_node_column = 0
 
         node_view_widget = QWidget()
         node_view_layout = QVBoxLayout(node_view_widget)
@@ -136,23 +141,72 @@ class LLMExplorer(QMainWindow):
         self.response_generator.stop()
         self.response_generator.wait()
     """
-    @Slot(llm_generator.SampleData, str)
-    def update_data(self, sample_data: llm_generator.SampleData, decoded_token: str):
-        self.chat_history.insertPlainText(decoded_token)
 
-        node = Node(decoded_token, sample_data.get_logit(), sample_data.get_p())
-        self.node_scroll_area.add_node(node, self.current_node_row)
-
+    def get_candidate_items(self, sample_data: llm_generator.SampleData):
         items = []
         for i in range(sample_data.get_candidate_count()):
             decoded_token = sample_data.get_canidate_decodedtoken(i, self.response_generator.llm)
             logit = sample_data.get_canidate_logit(i)
             p = sample_data.get_canidate_p(i)
             items.append(f"{decoded_token.strip()},{p:.2f},{logit:.2f}")
+
+        return items
+
+    @Slot()
+    def end_of_response(self):
+        self.llm_button.setText(GO)
+    
+
+    @Slot(llm_generator.SampleData, str)
+    def update_data(self, sample_data: llm_generator.SampleData, decoded_token: str):
+        self.chat_history.insertPlainText(decoded_token)
+
+        node = Node(decoded_token, sample_data.get_logit(), sample_data.get_p(), sample_data, self.current_node_row, self.current_node_column)
+        if self.prev_node != None:
+            node.response_text = self.prev_node.response_text + self.prev_node.decoded_token
+        self.node_scroll_area.add_node(node)
+        self.prev_node = node
+
+        items = self.get_candidate_items(sample_data)
         node.alternatives_combo.addItems(items)
+        # add callback for combo selection
+        node.alternatives_combo.currentIndexChanged.connect( lambda index, n=node: self.on_alternative_selected(n, index) )
+
+        self.current_node_column += 1
 
         #force an update
         QCoreApplication.processEvents()
+
+    def on_alternative_selected(self, node: Node, index: int):
+        #create a new node on the row below the current node
+        #insert a new row below the top row, current_node_row is then the new row
+        #generate a new prompt, using the previous prompt, plus the response up to the token associated with this node, then include this selected alternative
+        #request a new response        
+        if self.llm_button.text() == GO: #only if there is no activate response generating
+            decoded_token = node.sample_data.get_canidate_decodedtoken(index, self.response_generator.llm)
+            p = node.sample_data.get_canidate_p(index)
+            logit = node.sample_data.get_canidate_logit(index)
+
+            self.node_scroll_area.custom_layout.insert_row_after(node.row)
+            alt_node = Node(decoded_token, logit, p, node.sample_data, 1, node.column)
+            alt_node.response_text = node.response_text
+            self.node_scroll_area.add_node(alt_node)
+            self.prev_node = alt_node
+
+            items = self.get_candidate_items(alt_node.sample_data)
+            alt_node.alternatives_combo.addItems(items)
+            # add callback for combo selection
+            alt_node.alternatives_combo.currentIndexChanged.connect( lambda index, n=alt_node: self.on_alternative_selected(n, index) )        
+
+            #
+            self.current_node_row = node.row + 1
+            self.current_node_column = node.column
+
+            # Generate a new response
+            prompt = self.prev_prompt + "\n" + alt_node.response_text + decoded_token
+            self.response_generator.prompt = prompt
+            self.response_generator.settings = self.sample_settings            
+            self.response_generator.start()            
 
 
     def select_model(self):
@@ -160,27 +214,33 @@ class LLMExplorer(QMainWindow):
         if file_name:
             self.model_path_input.setText(file_name)
             result = self.response_generator.load_model(file_name)
-            self.chat_history.append(f"{result}\n")
+            self.chat_history.append("<font color='yellow'>System: {result}</font>\n")
 
     def on_llm_button_pressed(self):
         if not self.response_generator.llm:
-            self.chat_history.append("Please load a model first.")
+            self.chat_history.append("<font color='yellow'>System: Please load a model first.</font>\n")
             return
         if self.llm_button.text() == GO:
             prompt = self.prompt_input.text()
-            self.chat_history.append(f"<font color='green'>User:</font> {prompt}")
+            self.chat_history.append(f"<font color='blue'>User:</font> {prompt}\n<font color='green'>Response:</font>")
             self.prompt_input.clear()
 
             #     
             self.node_scroll_area.custom_layout.clear_nodes()
+            self.current_node_row = 0
+            self.current_node_column = 0
 
             # Generate response
-            self.response_generator.prompt = prompt
+            self.response_generator.prompt = self.chat_history.toPlainText()
             self.response_generator.settings = self.sample_settings            
             self.response_generator.start()
+            self.prev_prompt = self.response_generator.prompt
+            self.prev_node = None
 
             self.llm_button.setText(STOP)
             QCoreApplication.processEvents()
+
+
         elif self.llm_button.text() == STOP:
             self.response_generator.stop()
             

@@ -6,6 +6,10 @@ from PySide6.QtCore import QThread, Signal, QMutex, QMutexLocker
 from util.serializable import ISerializable
 
 class SampleData:
+    # decoded_token decoded token from sample
+    # the index selected from the cadidate tokens for this response.
+    # the full response up until this sample
+    # token_data_array sample info a cadidates
     def __init__(self, decoded_token: str, token_index: int, token_data_array:_LlamaTokenDataArray):
         self.decoded_token = decoded_token
         self.token_index:int = token_index
@@ -51,6 +55,7 @@ class SampleSettings(ISerializable):
 
 class ResponseGeneratorThread(QThread):
     new_data_signal = Signal(SampleData, str)
+    end_of_response = Signal()
 
     def __init__(self):
         super().__init__()
@@ -142,6 +147,7 @@ class ResponseGeneratorThread(QThread):
                         self._ctx.kv_cache_seq_rm(-1, self.llm.n_tokens, -1)
                         break
 
+            self.end_of_response.emit()
 
     def stop(self):
         self._is_running = False
