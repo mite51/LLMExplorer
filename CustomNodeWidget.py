@@ -11,21 +11,49 @@ class NoScrollComboBox(QComboBox):
         # Ignore the wheel event
         event.ignore()
 
-class Node(QFrame):
+class ArrowOnlyComboBox(QComboBox):
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.setStyleSheet("""
+            QComboBox {
+                border: 0px solid #ccc;
+                border-radius: 0px;
+                padding-left: 0px;
+                padding-right: 10px;  /* Space for arrow */
+                min-width: 0;
+                background: transparent;
+            }
+            QComboBox:editable {
+                width: 0px;
+                min-width: 0; 
+            }
+        """)
+        self.view().setMinimumWidth(100)  # Set a minimum width for the dropdown
+
+    def showPopup(self):
+        # Adjust the width of the popup before showing it
+        width = max(self.view().sizeHintForColumn(0) + 20, self.width())
+        self.view().setMinimumWidth(width)
+        super().showPopup()
+
+    def sizeHint(self):
+        return QSize(20, 20)  # Adjust size as needed for the arrow 
+
+class OldNode(QFrame):
     expander_padding = 10
-    def __init__(self, decoded_token, logit, p, sample_data: SampleData, row:int, column:int, parent=None):
+    def __init__(self, decoded_token, logit, p, sample_data: SampleData, row:int, column:int, llm, parent=None):
         super().__init__(parent)
         self.decoded_token = decoded_token
         self.logit = logit
         self.p = p
-        self.is_expanded = True
+        self.is_expanded = False
         self.sample_data: SampleData = sample_data
         self.row = row
         self.column = column
         self.response_text: str = "" # cache response up to this point, helpful to have when branching alternatives
-        self.setup_ui()
+        self.setup_ui(llm)
 
-    def setup_ui(self):
+    def setup_ui(self, llm):
         self.setFrameStyle(QFrame.Box | QFrame.Raised)#QFrame.StyledPanel | QFrame.Raised
         self.setLineWidth(1)
         self.setMidLineWidth(1)
@@ -44,6 +72,7 @@ class Node(QFrame):
         header.addWidget(self.token_label)
         header.addStretch()
         header.addWidget(self.expand_button)
+        header.addWidget(self.test_combo)
         layout.addLayout(header)
 
         self.content = QWidget()
@@ -55,9 +84,25 @@ class Node(QFrame):
         self.alternatives_combo = NoScrollComboBox()
         self.content_layout.addWidget(self.alternatives_combo)
 
+        items = self.get_candidate_items(llm)
+        self.alternatives_combo.addItems(items)
+        self.token_label.setToolTip(str(items))
+
+        self.content.setVisible(self.is_expanded)
+
         layout.addWidget(self.content)
         self.setLayout(layout)
        
+    def get_candidate_items(self, llm):
+        items = []
+        for i in range(self.sample_data.get_candidate_count()):
+            decoded_token = self.sample_data.get_canidate_decodedtoken(i, llm)
+            logit = self.sample_data.get_canidate_logit(i)
+            p = self.sample_data.get_canidate_p(i)
+            items.append(f"{decoded_token.strip()},{p:.2f},{logit:.2f}")
+
+        return items
+
 
     def get_desired_height(self):
         return 100 if self.is_expanded else 36
@@ -76,14 +121,78 @@ class Node(QFrame):
         #size = super.sizeHint()
         label_size = self.token_label.sizeHint()
         alternative_size = self.alternatives_combo.sizeHint()
-        width = max(label_size.width(), alternative_size.width())
+        width = label_size.width() + 30
+        if self.is_expanded:
+            width = max(label_size.width(), alternative_size.width())
         return QSize(width + self.expander_padding, self.get_desired_height())
+
+
+class Node(QFrame):
+    expander_padding = 10
+    def __init__(self, decoded_token, logit, p, sample_data: SampleData, row:int, column:int, llm, parent=None):
+        super().__init__(parent)
+        self.decoded_token = decoded_token
+        self.logit = logit
+        self.p = p
+        self.is_expanded = False
+        self.sample_data: SampleData = sample_data
+        self.row = row
+        self.column = column
+        self.response_text: str = "" # cache response up to this point, helpful to have when branching alternatives
+        self.setup_ui(llm)
+
+    def setup_ui(self, llm):
+        self.setFrameStyle(QFrame.Box | QFrame.Raised)#QFrame.StyledPanel | QFrame.Raised
+        self.setLineWidth(1)
+        self.setMidLineWidth(1)
+
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(1, 1, 1, 1)
+        layout.setSpacing(2)
+        layout.setAlignment(Qt.AlignmentFlag.AlignTop)
+
+        header = QHBoxLayout()
+        self.token_label = QLabel(repr(self.decoded_token))
+        self.token_label.setToolTip(f"p={self.p:.2f} logit={self.logit:.2f}")
+
+        self.alternatives_combo = ArrowOnlyComboBox()
+        items = self.get_candidate_items(llm)
+        self.alternatives_combo.addItems(items)
+
+        header.addWidget(self.token_label)
+        if len(items) > 1:
+            header.addStretch()
+            header.addWidget(self.alternatives_combo)
+        layout.addLayout(header)
+       
+    def get_candidate_items(self, llm):
+        items = []
+        for i in range(self.sample_data.get_candidate_count()):
+            decoded_token = self.sample_data.get_canidate_decodedtoken(i, llm)
+            logit = self.sample_data.get_canidate_logit(i)
+            p = self.sample_data.get_canidate_p(i)
+            items.append(f"{repr(decoded_token)},{p:.2f},{logit:.2f}")
+
+        return items
+
+
+    def get_desired_height(self):
+        return 100 if self.is_expanded else 36
+
+
+    def sizeHint(self):
+        label_size = self.token_label.sizeHint()
+        width = label_size.width() + 20
+        if self.alternatives_combo.count() <= 1:
+            width = label_size.width()
+        return QSize(width + self.expander_padding, 24)# self.get_desired_height())
+
 
 class CustomLayout(QWidget):
     def __init__(self, parent=None):
         super().__init__(parent)
         self.rows : List[List[Node]] = [[]]
-        self.setContentsMargins(10, 10, 10, 10)
+        self.setContentsMargins(2, 2, 2, 2)
 
     def insert_row_after(self, row_index:int):
         # Ensure the row_index is valid
@@ -138,7 +247,7 @@ class CustomLayout(QWidget):
                 x += node_width
 
                 max_x = max(max_x,x)
-            y += row_height + 10  # Add some vertical spacing between rows
+            y += row_height + 5  # Add some vertical spacing between rows
 
         self.setMinimumSize(max_x + self.contentsMargins().left() + self.contentsMargins().right(),
                             y + self.contentsMargins().top() + self.contentsMargins().bottom())

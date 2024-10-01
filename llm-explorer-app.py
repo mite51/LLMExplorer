@@ -18,8 +18,9 @@ NODE_SPACING = 50.0
 TODO:
 [x] Add temp, top_n, top_k gui
 [x] Hook up drop down selection to create a new response stream
-    [ ] should make the nodes much more compact
-[ ] Add the full resonse above the nodes in the node row.. just for easy readability hopefully
+    [x] should make the nodes much more compact
+[ ] Create chat entries, so that some messages can be ignored or replaced with alterate responses
+    [ ] add a button to select a row as the final response
 [ ] Create a metric from logits and or softmax to quantify hallicination/certainty
 [ ] Try generating N responses, then ask LLM to pick the best
     [ ] can the LLM identify hallicinated reponses? 
@@ -40,7 +41,6 @@ class LLMExplorer(QMainWindow):
         self.response_generator = llm_generator.ResponseGeneratorThread()
         self.response_generator.new_data_signal.connect(self.update_data)
         self.response_generator.end_of_response.connect(self.end_of_response)
-        self.response_generator.max_response_length = 12
 
         self.setWindowTitle("LLM Explorer")
         self.setGeometry(100, 100, 1200, 800)
@@ -107,12 +107,15 @@ class LLMExplorer(QMainWindow):
         prompt_label.setStyleSheet("font-weight: bold; font-size: 14px;")
         self.prompt_input = QLineEdit()
         self.prompt_input.setPlaceholderText("Enter your prompt here")
-        self.llm_button = QPushButton(GO)
-        self.llm_button.clicked.connect(self.on_llm_button_pressed)
+        self.go_button = QPushButton(GO)
+        self.go_button.clicked.connect(self.on_go_pressed)
+        self.clear_button = QPushButton("clear")
+        self.clear_button.clicked.connect(self.on_clear_pressed)        
         prompt_input_layout = QHBoxLayout()
         prompt_input_layout.addWidget(prompt_label)
         prompt_input_layout.addWidget(self.prompt_input)
-        prompt_input_layout.addWidget(self.llm_button)
+        prompt_input_layout.addWidget(self.go_button)
+        prompt_input_layout.addWidget(self.clear_button)
 
         # 
         prompt_layout.addLayout(model_select_layout)
@@ -142,33 +145,21 @@ class LLMExplorer(QMainWindow):
         self.response_generator.wait()
     """
 
-    def get_candidate_items(self, sample_data: llm_generator.SampleData):
-        items = []
-        for i in range(sample_data.get_candidate_count()):
-            decoded_token = sample_data.get_canidate_decodedtoken(i, self.response_generator.llm)
-            logit = sample_data.get_canidate_logit(i)
-            p = sample_data.get_canidate_p(i)
-            items.append(f"{decoded_token.strip()},{p:.2f},{logit:.2f}")
-
-        return items
-
     @Slot()
     def end_of_response(self):
-        self.llm_button.setText(GO)
+        self.go_button.setText(GO)
     
 
     @Slot(llm_generator.SampleData, str)
     def update_data(self, sample_data: llm_generator.SampleData, decoded_token: str):
         self.chat_history.insertPlainText(decoded_token)
 
-        node = Node(decoded_token, sample_data.get_logit(), sample_data.get_p(), sample_data, self.current_node_row, self.current_node_column)
+        node = Node(decoded_token, sample_data.get_logit(), sample_data.get_p(), sample_data, self.current_node_row, self.current_node_column, self.response_generator.llm)
         if self.prev_node != None:
             node.response_text = self.prev_node.response_text + self.prev_node.decoded_token
         self.node_scroll_area.add_node(node)
         self.prev_node = node
 
-        items = self.get_candidate_items(sample_data)
-        node.alternatives_combo.addItems(items)
         # add callback for combo selection
         node.alternatives_combo.currentIndexChanged.connect( lambda index, n=node: self.on_alternative_selected(n, index) )
 
@@ -182,25 +173,28 @@ class LLMExplorer(QMainWindow):
         #insert a new row below the top row, current_node_row is then the new row
         #generate a new prompt, using the previous prompt, plus the response up to the token associated with this node, then include this selected alternative
         #request a new response        
-        if self.llm_button.text() == GO: #only if there is no activate response generating
+        if self.go_button.text() == GO: #only if there is no activate response generating
             decoded_token = node.sample_data.get_canidate_decodedtoken(index, self.response_generator.llm)
             p = node.sample_data.get_canidate_p(index)
             logit = node.sample_data.get_canidate_logit(index)
 
             self.node_scroll_area.custom_layout.insert_row_after(node.row)
-            alt_node = Node(decoded_token, logit, p, node.sample_data, 1, node.column)
+            alt_node = Node(decoded_token, logit, p, node.sample_data, node.row+1, node.column, self.response_generator.llm)
             alt_node.response_text = node.response_text
             self.node_scroll_area.add_node(alt_node)
             self.prev_node = alt_node
 
-            items = self.get_candidate_items(alt_node.sample_data)
-            alt_node.alternatives_combo.addItems(items)
             # add callback for combo selection
             alt_node.alternatives_combo.currentIndexChanged.connect( lambda index, n=alt_node: self.on_alternative_selected(n, index) )        
 
             #
             self.current_node_row = node.row + 1
-            self.current_node_column = node.column
+            self.current_node_column = node.column + 1
+
+            # update all the nodes so the "row" is accurate
+            for i_row, row in enumerate(self.node_scroll_area.custom_layout.rows):
+                for node in row:
+                    node.row = i_row
 
             # Generate a new response
             prompt = self.prev_prompt + "\n" + alt_node.response_text + decoded_token
@@ -210,17 +204,24 @@ class LLMExplorer(QMainWindow):
 
 
     def select_model(self):
-        file_name, _ = QFileDialog.getOpenFileName(self, "Select LLM Model")
+        file_name, _ = QFileDialog.getOpenFileName(self, "Select LLM Model", filter = "LLM model (*.gguf)")
         if file_name:
             self.model_path_input.setText(file_name)
             result = self.response_generator.load_model(file_name)
             self.chat_history.append("<font color='yellow'>System: {result}</font>\n")
 
-    def on_llm_button_pressed(self):
+    def on_clear_pressed(self):
+        self.chat_history.clear()
+        self.prompt_input.clear()
+        self.node_scroll_area.custom_layout.clear_nodes()
+        self.current_node_row = 0
+        self.current_node_column = 0        
+
+    def on_go_pressed(self):
         if not self.response_generator.llm:
             self.chat_history.append("<font color='yellow'>System: Please load a model first.</font>\n")
             return
-        if self.llm_button.text() == GO:
+        if self.go_button.text() == GO:
             prompt = self.prompt_input.text()
             self.chat_history.append(f"<font color='blue'>User:</font> {prompt}\n<font color='green'>Response:</font>")
             self.prompt_input.clear()
@@ -237,14 +238,14 @@ class LLMExplorer(QMainWindow):
             self.prev_prompt = self.response_generator.prompt
             self.prev_node = None
 
-            self.llm_button.setText(STOP)
+            self.go_button.setText(STOP)
             QCoreApplication.processEvents()
 
 
-        elif self.llm_button.text() == STOP:
+        elif self.go_button.text() == STOP:
             self.response_generator.stop()
             
-            self.llm_button.setText(GO)
+            self.go_button.setText(GO)
             QCoreApplication.processEvents()
 
 

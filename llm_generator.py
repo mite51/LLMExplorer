@@ -39,6 +39,7 @@ class SampleData:
 
 class SampleSettings(ISerializable):
     def __init__(self):  
+        self.max_samples:int = 40
         self.top_k: int = 40
         self.top_p: float = 0.95
         self.min_p: float = 0.05
@@ -65,7 +66,6 @@ class ResponseGeneratorThread(QThread):
         self.prompt =""
         self.response_data = []
         self.response_text = ""
-        self.max_response_length = 0
         self.mutex = QMutex()  # Create a mutex for thread synchronization
 
     def load_model(self, model_path) -> str:
@@ -138,7 +138,7 @@ class ResponseGeneratorThread(QThread):
                     sample_idx += 1
                     response_length += 1
 
-                    if self.max_response_length > 0 and response_length > self.max_response_length:
+                    if self.settings.max_samples > 0 and response_length > self.settings.max_samples:
                         loop = False
                         break
 
