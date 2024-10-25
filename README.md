@@ -9,3 +9,22 @@ Other experiments I would like to try:
 -try different sampling techniques (top-k, top-p) and visualize the differences
    *including macro sampling techniques, generate a number of chunks of tokens, then select from those chunks based on some criteria like coherence or relevance to the prompt
 -explore how temperature affects the candidate token distribution and response generation
+
+
+Installation notes (that worked for me):
+
+git clone https://github.com/mite51/LLMTaskGraph
+cd llama_cpp_python
+git submodule update --init --recursive
+
+conda create -n llm_explorer python=3.12
+conda activate llm_explorer
+
+# llama install
+# I had some missing libs from ggml, this helped
+export LD_LIBRARY_PATH=/home/jwylie/anaconda3/envs/rlgpu/lib
+pip install -e .[all]
+
+# for this app
+sudo apt-get install -y libxcb-cursor-dev
+pip3 install PySide6
