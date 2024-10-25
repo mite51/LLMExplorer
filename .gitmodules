@@ -1,0 +1,3 @@
+[submodule "/home/jwylie/dev/LLMExplorer/llama_cpp_python"]
+	path = /home/jwylie/dev/LLMExplorer/llama_cpp_python
+	url = https://github.com/mite51/llama-cpp-python-candidates.git
