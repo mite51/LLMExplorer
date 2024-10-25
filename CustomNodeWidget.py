@@ -2,7 +2,7 @@ from typing import List
 from PySide6.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QLabel, 
                                QScrollArea, QPushButton, QApplication, QFrame, QComboBox)
 from PySide6.QtCore import Qt, QSize, QRect, QPoint
-from PySide6.QtGui import QPainter, QColor
+from PySide6.QtGui import QPainter, QColor, QPen
 
 from llm_generator import SampleData
 
@@ -251,10 +251,27 @@ class CustomLayout(QWidget):
 
         self.setMinimumSize(max_x + self.contentsMargins().left() + self.contentsMargins().right(),
                             y + self.contentsMargins().top() + self.contentsMargins().bottom())
-
+    
     def paintEvent(self, event):
         painter = QPainter(self)
-        painter.fillRect(self.rect(), QColor(240, 240, 240))
+
+        # Define colors
+        bg_color = QColor("#2B2B2B")
+        border_color = QColor("#202020")
+        
+        # Draw background
+        painter.setPen(Qt.NoPen)
+        painter.setBrush(bg_color)
+        painter.drawRect(self.rect())    
+
+        # Draw border
+        pen = QPen(border_color)
+        pen.setWidth(1)
+        painter.setPen(pen)
+        painter.setBrush(Qt.NoBrush)
+        # Subtract 1 from width and height to ensure border is fully visible
+        painter.drawRect(0, 0, self.width() - 1, self.height() - 1)            
+    
 
 class ScrollArea(QScrollArea):
     def __init__(self, parent=None):
