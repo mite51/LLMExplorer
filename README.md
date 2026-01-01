@@ -13,7 +13,8 @@ Other experiments I would like to try:
 
 Installation notes (that worked for me):
 
-git clone https://github.com/mite51/LLMTaskGraph
+git clone https://github.com/mite51/LLMExplorer
+
 cd llama_cpp_python
 git submodule update --init --recursive
 
